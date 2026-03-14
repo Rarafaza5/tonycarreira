@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎤 KARAOKÉ PARTY</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+  <style>
+/* ═══════════════════════ RESET & ROOT ═══════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#09090f;
+  --surface:#111120;
+  --card:#181830;
+  --border:#252545;
+  --pink:#ff2c6d;
+  --cyan:#00e5ff;
+  --yellow:#ffe240;
+  --green:#00ff88;
+  --white:#eeeef8;
+  --muted:#55556a;
+  --font-head:'Anton',sans-serif;
+  --font-body:'DM Mono',monospace;
+  --r:10px;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--white);
+  font-family:var(--font-body);
+  font-size:13px;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+input,button{font-family:var(--font-body)}
+a{color:var(--cyan)}
+
+/* ═══════════════════════ SCANLINES ═══════════════════════ */
+body::before{
+  content:'';
+  position:fixed;inset:0;pointer-events:none;z-index:9000;
+  background:repeating-linear-gradient(
+    180deg,
+    transparent 0,transparent 2px,
+    rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px
+  );
+}
+
+/* ═══════════════════════ SCREENS ═══════════════════════ */
+.screen{display:none;min-height:100vh}
+.screen.active{display:flex}
+
+/* ═══════════════════════ HOME ═══════════════════════ */
+#home{
+  flex-direction:column;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;gap:0;
+}
+.home-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 110%,#1a004488 0%,transparent 60%),
+    radial-gradient(ellipse 60% 50% at 10% 10%,#00142244 0%,transparent 55%),
+    radial-gradient(ellipse 40% 40% at 90% 5%,#2a001044 0%,transparent 50%);
+}
+.grid-floor{
+  position:absolute;bottom:0;left:0;right:0;height:55%;
+  background-image:
+    linear-gradient(var(--cyan) 1px,transparent 1px),
+    linear-gradient(90deg,var(--cyan) 1px,transparent 1px);
+  background-size:50px 50px;
+  opacity:.07;
+  transform:perspective(500px) rotateX(40deg);
+  transform-origin:bottom;
+}
+.notes-rain{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.note{
+  position:absolute;
+  font-size:1.5rem;
+  animation:rain linear infinite;
+  opacity:0;
+}
+@keyframes rain{
+  0%  {opacity:0;transform:translateY(-20px) rotate(0)}
+  10% {opacity:.7}
+  90% {opacity:.2}
+  100%{opacity:0;transform:translateY(105vh) rotate(720deg)}
+}
+
+.hero{
+  position:relative;z-index:10;
+  display:flex;flex-direction:column;align-items:center;
+  gap:1.5rem;padding:2rem 1.5rem;text-align:center;
+}
+.hero-label{
+  font-size:.65rem;letter-spacing:.5em;color:var(--cyan);
+  text-transform:uppercase;
+  border:1px solid var(--cyan);
+  padding:.3rem .9rem;border-radius:50px;
+  box-shadow:0 0 12px rgba(0,229,255,.2);
+}
+.hero-title{
+  font-family:var(--font-head);
+  font-size:clamp(4.5rem,16vw,9rem);
+  line-height:.88;
+  letter-spacing:.02em;
+  color:var(--white);
+  text-shadow:0 0 40px rgba(255,44,109,.5),0 0 80px rgba(255,44,109,.25);
+}
+.hero-title span{
+  color:var(--pink);
+  -webkit-text-stroke:1px var(--pink);
+}
+.hero-mic{
+  font-size:3.5rem;
+  display:inline-block;
+  animation:bob 2.2s ease-in-out infinite;
+  filter:drop-shadow(0 0 12px var(--pink));
+}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-10px) rotate(5deg)}}
+.hero-sub{
+  color:var(--muted);font-size:.85rem;line-height:1.7;max-width:340px;
+}
+.btn-row{display:flex;gap:.75rem;flex-wrap:wrap;justify-content:center}
+
+/* ═══════════════════════ BUTTONS ═══════════════════════ */
+.btn{
+  font-family:var(--font-body);
+  font-size:.8rem;font-weight:500;
+  padding:.65rem 1.8rem;
+  border:none;border-radius:var(--r);
+  cursor:pointer;
+  letter-spacing:.08em;text-transform:uppercase;
+  transition:all .15s;
+  position:relative;overflow:hidden;
+}
+.btn::after{content:'';position:absolute;inset:0;background:#fff;opacity:0;transition:.1s}
+.btn:active::after{opacity:.1}
+.btn-pink{background:var(--pink);color:#fff;box-shadow:0 0 20px rgba(255,44,109,.35)}
+.btn-pink:hover{box-shadow:0 0 35px rgba(255,44,109,.65);transform:translateY(-2px)}
+.btn-outline{background:transparent;color:var(--cyan);border:1px solid var(--cyan);box-shadow:0 0 10px rgba(0,229,255,.15)}
+.btn-outline:hover{background:rgba(0,229,255,.07);box-shadow:0 0 22px rgba(0,229,255,.35);transform:translateY(-1px)}
+.btn-yellow{background:var(--yellow);color:#09090f;box-shadow:0 0 14px rgba(255,226,64,.3)}
+.btn-yellow:hover{box-shadow:0 0 28px rgba(255,226,64,.55);transform:translateY(-1px)}
+.btn-green{background:var(--green);color:#09090f;box-shadow:0 0 14px rgba(0,255,136,.3)}
+.btn-green:hover{box-shadow:0 0 28px rgba(0,255,136,.5);transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--white);border-color:var(--muted)}
+.btn-danger{background:transparent;color:#ff5555;border:1px solid #ff5555}
+.btn-danger:hover{background:rgba(255,85,85,.1)}
+.btn-sm{padding:.4rem 1rem;font-size:.72rem}
+
+/* ═══════════════════════ PANELS (create/join) ═══════════════════════ */
+#create-screen,#join-screen{
+  align-items:center;justify-content:center;
+  background:var(--bg);position:relative;overflow:hidden;
+}
+#create-screen::before,#join-screen::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 80% at 50% 50%,#110022 0%,transparent 70%);
+}
+.back{
+  position:absolute;top:1.5rem;left:1.5rem;z-index:10;
+  background:none;border:none;color:var(--muted);
+  font-family:var(--font-body);font-size:.8rem;
+  cursor:pointer;transition:color .2s;
+}
+.back:hover{color:var(--cyan)}
+.panel{
+  position:relative;z-index:10;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;padding:2.2rem;
+  width:100%;max-width:400px;margin:1rem;
+  box-shadow:0 0 60px rgba(255,44,109,.06);
+}
+.panel-title{
+  font-family:var(--font-head);
+  font-size:2.2rem;color:var(--yellow);
+  text-shadow:0 0 20px rgba(255,226,64,.35);
+  margin-bottom:1.5rem;
+}
+.field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:1.1rem}
+.field label{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+input[type=text]{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  color:var(--white);
+  font-family:var(--font-body);
+  font-size:.9rem;
+  padding:.65rem 1rem;
+  width:100%;outline:none;
+  transition:border-color .2s,box-shadow .2s;
+}
+input[type=text]:focus{border-color:var(--pink);box-shadow:0 0 14px rgba(255,44,109,.2)}
+input::placeholder{color:var(--muted)}
+.err{color:#ff6b6b;font-size:.75rem;margin-top:.4rem;min-height:1em}
+
+/* ═══════════════════════ ROOM ═══════════════════════ */
+#room-screen{flex-direction:row}
+#room-screen.active{display:flex}
+
+.sidebar{
+  width:250px;min-width:220px;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;gap:1.2rem;
+  padding:1.2rem;overflow-y:auto;
+  height:100vh;position:sticky;top:0;
+}
+.code-block{border-bottom:1px solid var(--border);padding-bottom:1.1rem}
+.code-label{font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--muted)}
+.code-row{display:flex;align-items:center;gap:.5rem;margin:.3rem 0}
+.room-code{
+  font-family:var(--font-head);font-size:1.9rem;
+  color:var(--yellow);letter-spacing:.15em;
+  text-shadow:0 0 16px rgba(255,226,64,.45);
+}
+.copy-btn{background:none;border:none;cursor:pointer;font-size:.9rem;opacity:.5;transition:opacity .2s}
+.copy-btn:hover{opacity:1}
+.room-name{font-size:.78rem;color:var(--muted);margin-top:.1rem}
+
+.sec-title{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:.5rem}
+
+#plist,#qlist{list-style:none;display:flex;flex-direction:column;gap:.35rem}
+#plist li{
+  background:var(--card);border-radius:6px;
+  padding:.4rem .65rem;font-size:.78rem;
+  display:flex;align-items:center;gap:.4rem;
+  border:1px solid transparent;
+}
+.p-me{border-color:var(--pink) !important}
+.p-host::after{content:'👑';margin-left:auto;font-size:.7rem}
+
+#qlist li{
+  background:var(--card);border-radius:6px;
+  padding:.5rem .65rem;font-size:.75rem;
+  display:flex;flex-direction:column;gap:.1rem;
+}
+.q-title{color:var(--white);font-weight:500}
+.q-artist{color:var(--muted);font-size:.7rem}
+.q-who{color:var(--pink);font-size:.65rem;margin-top:.15rem}
+.q-empty{color:var(--muted);font-style:italic;font-size:.75rem}
+
+/* ═══════════════════════ MAIN ═══════════════════════ */
+.main{
+  flex:1;display:flex;flex-direction:column;gap:1.2rem;
+  padding:1.5rem;overflow-y:auto;max-height:100vh;
+}
+
+/* Now playing */
+.np-card{
+  background:var(--card);
+  border:1px solid var(--pink);
+  border-radius:14px;padding:1.5rem;
+  box-shadow:0 0 35px rgba(255,44,109,.1);
+}
+.np-top{display:flex;align-items:center;gap:.8rem;margin-bottom:.8rem;flex-wrap:wrap}
+.np-badge{
+  background:var(--pink);color:#fff;
+  font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;
+  padding:.2rem .6rem;border-radius:4px;
+}
+.np-who{color:var(--cyan);font-size:.8rem}
+.np-title{font-family:var(--font-head);font-size:1.9rem;color:var(--white);display:block;line-height:1.1}
+.np-artist{color:var(--muted);font-size:.78rem;display:block;margin-top:.2rem}
+
+/* Player */
+.yt-wrap{
+  margin:1rem 0;border-radius:8px;overflow:hidden;
+  aspect-ratio:16/9;max-height:280px;background:#000;
+}
+.yt-wrap iframe,.yt-wrap #ytplayer{width:100% !important;height:100% !important}
+
+/* Lyrics */
+.lyrics-box{
+  background:var(--surface);border-radius:8px;
+  padding:1.2rem 1.5rem;min-height:100px;
+  max-height:320px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.lyric{
+  font-size:1rem;line-height:1.7;
+  color:var(--muted);
+  transition:all .25s;
+  cursor:pointer;
+  padding:.1rem 0;
+}
+.lyric.active{
+  color:var(--yellow);font-size:1.2rem;
+  text-shadow:0 0 18px rgba(255,226,64,.55);
+  transform:translateX(6px);
+}
+.lyric.past{color:var(--border);opacity:.6}
+.lyrics-none{color:var(--muted);font-style:italic;font-size:.85rem;text-align:center;padding:1rem}
+.lyrics-loader{display:flex;align-items:center;gap:.8rem;color:var(--muted);font-size:.8rem}
+.spin{
+  width:18px;height:18px;border:2px solid var(--border);
+  border-top-color:var(--cyan);border-radius:50%;
+  animation:spin .7s linear infinite;flex-shrink:0;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.ctrl-row{display:flex;gap:.65rem;flex-wrap:wrap;margin-top:1rem}
+
+/* Idle */
+.idle{
+  text-align:center;padding:3rem 1rem;color:var(--muted);
+}
+.idle-icon{font-size:3.5rem;margin-bottom:1rem;opacity:.4;display:block}
+
+/* Add song */
+.add-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:1.5rem;
+}
+.card-title{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:1rem}
+.row{display:flex;gap:.5rem}
+.row input{flex:1}
+.results{display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem}
+.res-item{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:.6rem .9rem;
+  display:flex;justify-content:space-between;align-items:center;
+  cursor:pointer;transition:border-color .15s;
+}
+.res-item:hover{border-color:var(--pink)}
+.res-info{display:flex;flex-direction:column;gap:.1rem}
+.res-title{font-size:.82rem;font-weight:500}
+.res-artist{font-size:.68rem;color:var(--muted)}
+details.manual{
+  border:1px dashed var(--border);border-radius:6px;padding:.65rem;margin-top:.5rem;
+}
+details.manual summary{cursor:pointer;color:var(--muted);font-size:.73rem}
+.manual-fields{display:flex;flex-direction:column;gap:.4rem;margin-top:.6rem}
+
+/* Chat */
+.chat-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:1.5rem;
+}
+.chat-msgs{
+  height:180px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:.3rem;
+  margin-bottom:.7rem;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.msg{font-size:.78rem;line-height:1.4;padding:.25rem .4rem;border-radius:4px}
+.msg .who{color:var(--cyan);margin-right:.4rem}
+.msg.sys{color:var(--muted);font-style:italic}
+.msg.mine{background:rgba(255,44,109,.07)}
+.chat-row{display:flex;gap:.5rem}
+.chat-row input{flex:1}
+
+/* Config modal */
+.overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.88);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+}
+.modal{
+  background:var(--card);
+  border:1px solid var(--cyan);
+  border-radius:14px;padding:2rem;
+  max-width:460px;width:100%;
+  box-shadow:0 0 50px rgba(0,229,255,.12);
+}
+.modal h2{font-family:var(--font-head);font-size:1.8rem;color:var(--cyan);margin-bottom:.8rem}
+.modal p{color:var(--muted);font-size:.82rem;line-height:1.65;margin-bottom:1.2rem}
+.modal .note{font-size:.68rem;color:var(--muted);margin-top:.6rem}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:1.5rem;right:1.5rem;z-index:99999;
+  background:var(--card);border:1px solid var(--cyan);
+  color:var(--white);padding:.65rem 1.3rem;
+  border-radius:8px;font-size:.82rem;
+  opacity:0;pointer-events:none;
+  transform:translateY(8px);
+  transition:opacity .25s,transform .25s;
+  box-shadow:0 0 20px rgba(0,229,255,.18);
+}
+#toast.show{opacity:1;transform:translateY(0)}
+
+/* Responsive */
+@media(max-width:660px){
+  .sidebar{display:none}
+  #room-screen.active{flex-direction:column}
+  .main{padding:1rem}
+  .yt-wrap{max-height:200px}
+  .hero-title{font-size:clamp(3.5rem,18vw,6rem)}
+}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  </style>
+</head>
+<body>
+
+<!-- ████ HOME ████ -->
+<div id="home" class="screen active">
+  <div class="home-bg"></div>
+  <div class="grid-floor"></div>
+  <div class="notes-rain" id="notesRain"></div>
+  <div class="hero">
+    <div class="hero-label">✦ online karaoke party ✦</div>
+    <div>
+      <h1 class="hero-title">KARA<br/><span>OKÉ</span></h1>
+      <div class="hero-mic">🎤</div>
+    </div>
+    <p class="hero-sub">Canta com os teus amigos em qualquer lado. De graça. Sem apps.</p>
+    <div class="btn-row">
+      <button class="btn btn-pink" onclick="goCreate()">Criar Sala</button>
+      <button class="btn btn-outline" onclick="goJoin()">Entrar numa Sala</button>
+    </div>
+    <div style="font-size:.62rem;color:var(--muted);letter-spacing:.15em;margin-top:.5rem">
+      Firebase · LRCLIB · Vercel · 100% grátis
+    </div>
+  </div>
+</div>
+
+<!-- ████ CREATE ████ -->
+<div id="create-screen" class="screen">
+  <button class="back" onclick="goHome()">← Voltar</button>
+  <div class="panel">
+    <div class="panel-title">Nova Sala 🎉</div>
+    <div class="field">
+      <label>O teu nome</label>
+      <input id="c-name" type="text" placeholder="DJ Zé Manel" maxlength="20"/>
+    </div>
+    <div class="field">
+      <label>Nome da festa</label>
+      <input id="c-room" type="text" placeholder="Aniversário da Filipa" maxlength="30"/>
+    </div>
+    <button class="btn btn-pink" style="width:100%" onclick="createRoom()">Criar e Entrar 🚀</button>
+    <div id="c-err" class="err"></div>
+  </div>
+</div>
+
+<!-- ████ JOIN ████ -->
+<div id="join-screen" class="screen">
+  <button class="back" onclick="goHome()">← Voltar</button>
+  <div class="panel">
+    <div class="panel-title">Entrar 🎊</div>
+    <div class="field">
+      <label>O teu nome</label>
+      <input id="j-name" type="text" placeholder="A Cantora Maria" maxlength="20"/>
+    </div>
+    <div class="field">
+      <label>Código da sala</label>
+      <input id="j-code" type="text" placeholder="ABC123" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em"/>
+    </div>
+    <button class="btn btn-pink" style="width:100%" onclick="joinRoom()">Entrar 🎤</button>
+    <div id="j-err" class="err"></div>
+  </div>
+</div>
+
+<!-- ████ ROOM ████ -->
+<div id="room-screen" class="screen">
+
+  <aside class="sidebar">
+    <div class="code-block">
+      <div class="code-label">Código da Sala</div>
+      <div class="code-row">
+        <div class="room-code" id="rc">------</div>
+        <button class="copy-btn" onclick="copyCode()" title="Copiar">📋</button>
+      </div>
+      <div class="room-name" id="rname"></div>
+    </div>
+
+    <div>
+      <div class="sec-title">Na sala <span id="pcnt">(0)</span></div>
+      <ul id="plist"></ul>
+    </div>
+
+    <div style="flex:1">
+      <div class="sec-title">Fila 🎵</div>
+      <ul id="qlist"><li class="q-empty">Fila vazia</li></ul>
+    </div>
+
+    <button class="btn btn-danger btn-sm" onclick="leaveRoom()">Sair da Sala</button>
+  </aside>
+
+  <main class="main">
+    <!-- Now Playing -->
+    <div id="np-card" class="np-card" style="display:none">
+      <div class="np-top">
+        <span class="np-badge">▶ A TOCAR</span>
+        <span id="np-who" class="np-who"></span>
+      </div>
+      <span id="np-title" class="np-title"></span>
+      <span id="np-artist" class="np-artist"></span>
+
+      <div class="yt-wrap" id="yt-wrap" style="display:none">
+        <div id="ytplayer"></div>
+      </div>
+
+      <div class="lyrics-box" id="lbox">
+        <div class="lyrics-loader" id="lload" style="display:none"><div class="spin"></div>A buscar letra...</div>
+        <div id="llines"></div>
+        <div id="lnone" class="lyrics-none" style="display:none">🎵 Letra não encontrada — improvisa!</div>
+      </div>
+
+      <div class="ctrl-row" id="singer-ctrl" style="display:none">
+        <button class="btn btn-green" onclick="finishSong()">✅ Terminei!</button>
+        <button class="btn btn-ghost btn-sm" onclick="skipSong()">⏭ Saltar</button>
+      </div>
+      <div class="ctrl-row" id="host-ctrl" style="display:none">
+        <button class="btn btn-ghost btn-sm" onclick="skipSong()">⏭ Saltar (host)</button>
+      </div>
+    </div>
+
+    <div id="idle" class="idle">
+      <span class="idle-icon">🎤</span>
+      <p>Ninguém está a cantar.<br/>Adiciona uma música à fila!</p>
+    </div>
+
+    <!-- Add Song -->
+    <div class="add-card">
+      <div class="card-title">Adicionar à Fila 🎵</div>
+      <div class="row">
+        <input id="sq" type="text" placeholder="Pesquisar música ou artista…" onkeypress="if(event.key==='Enter')searchSongs()"/>
+        <button class="btn btn-yellow btn-sm" onclick="searchSongs()">Pesquisar</button>
+      </div>
+      <div id="sres" class="results"></div>
+      <details class="manual">
+        <summary>Adicionar manualmente com link YouTube</summary>
+        <div class="manual-fields">
+          <input id="m-title" type="text" placeholder="Nome da música"/>
+          <input id="m-artist" type="text" placeholder="Artista"/>
+          <input id="m-yt" type="text" placeholder="Link YouTube (opcional)"/>
+          <button class="btn btn-ghost btn-sm" onclick="addManual()">Adicionar</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-card">
+      <div class="card-title">Chat 💬</div>
+      <div id="cmsg" class="chat-msgs"></div>
+      <div class="chat-row">
+        <input id="cin" type="text" placeholder="Escreve algo…" maxlength="200" onkeypress="if(event.key==='Enter')sendChat()"/>
+        <button class="btn btn-ghost btn-sm" onclick="sendChat()">Enviar</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Config Modal -->
+<div id="cfg-modal" class="overlay" style="display:none">
+  <div class="modal">
+    <h2>⚙️ Firebase Config</h2>
+    <p>
+      Para funcionar precisas de um projeto <strong>Firebase</strong> gratuito.<br/>
+      Segue o <strong>SETUP.md</strong> incluído no zip e cola aqui a tua configuração.
+    </p>
+    <div class="field">
+      <label>Firebase Config JSON</label>
+      <input id="cfg-in" type="text" placeholder='{"apiKey":"...","databaseURL":"..."}' style="font-size:.72rem"/>
+    </div>
+    <button class="btn btn-pink" onclick="saveCfg()">Guardar e Continuar</button>
+    <p class="note">Guardado apenas no teu browser (localStorage). Nunca sai daqui.</p>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getDatabase, ref, set, get, update, onValue, push, remove, off
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+window._fb = { initializeApp, getDatabase, ref, set, get, update, onValue, push, remove, off };
+window.dispatchEvent(new Event('fb-ready'));
+</script>
+<script src="js/app.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
