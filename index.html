@@ -186,6 +186,27 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
 .ytm-add{flex-shrink:0}
 .ytm-loading{color:var(--muted);font-size:.8rem;text-align:center;padding:1.5rem;display:flex;align-items:center;justify-content:center;gap:.6rem}
 .yt-modal-footer{border-top:1px solid var(--border);padding-top:.75rem}
+
+/* ── VOICE CALL ── */
+.voice-section{border-top:1px solid var(--border);padding-top:1rem}
+.voice-title{font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:.6rem;display:flex;align-items:center;justify-content:space-between}
+.voice-status{font-size:.62rem;color:var(--muted);letter-spacing:0}
+.voice-peers{display:flex;flex-direction:column;gap:.3rem;margin-bottom:.6rem;min-height:.5rem}
+.vpeer{display:flex;align-items:center;gap:.5rem;font-size:.75rem;padding:.3rem .5rem;background:var(--card);border-radius:6px;border:1px solid var(--border)}
+.vpeer.speaking{border-color:var(--green);box-shadow:0 0 8px rgba(0,255,136,.2)}
+.vpeer-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .2s}
+.vpeer.speaking .vpeer-dot{background:var(--green)}
+.vpeer.muted .vpeer-dot{background:#ff5555}
+.voice-btns{display:flex;gap:.4rem;flex-wrap:wrap}
+.vbtn{font-family:var(--fb);font-size:.68rem;padding:.35rem .75rem;border:none;border-radius:6px;cursor:pointer;transition:all .15s;letter-spacing:.05em}
+.vbtn-join{background:var(--green);color:#08080e}
+.vbtn-join:hover{filter:brightness(1.1)}
+.vbtn-leave{background:transparent;color:#ff5555;border:1px solid #ff5555}
+.vbtn-leave:hover{background:rgba(255,85,85,.1)}
+.vbtn-mute{background:var(--surface);color:var(--white);border:1px solid var(--border)}
+.vbtn-mute.muted{background:#ff5555;color:#fff;border-color:#ff5555}
+.vbtn-mute:hover{border-color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -240,6 +261,18 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
     </div>
     <div><div class="stitle">Na sala <span id="pcnt">(0)</span></div><ul id="plist"></ul></div>
     <div style="flex:1"><div class="stitle">Fila 🎵</div><ul id="qlist"><li class="qempty">Fila vazia</li></ul></div>
+      <div class="voice-section">
+        <div class="voice-title">
+          Chamada de Voz 🎙️
+          <span class="voice-status" id="vc-status">Desligado</span>
+        </div>
+        <div class="voice-peers" id="vc-peers"></div>
+        <div class="voice-btns">
+          <button class="vbtn vbtn-join" id="vc-join">📞 Entrar</button>
+          <button class="vbtn vbtn-leave" id="vc-leave" style="display:none">📵 Sair</button>
+          <button class="vbtn vbtn-mute" id="vc-mute" style="display:none">🎙️ Mudo</button>
+        </div>
+      </div>
     <button class="btn btn-danger btn-sm" id="leave-btn">Sair da Sala</button>
   </aside>
   <main class="main">
@@ -338,6 +371,7 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
 
 <div id="toast"></div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, onValue, off, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -742,22 +776,6 @@ async function searchSongs(){
 // which scrapes YouTube server-side — no API key, no CORS issues.
 let pickerSong = {title:'', artist:'', ytId:null};
 
-async function searchYouTube(query){
-  try{
-    const r = await fetch('/api/ytsearch?q='+encodeURIComponent(query), {signal: AbortSignal.timeout(8000)});
-    if(!r.ok) return null;
-    const data = await r.json();
-    if(!Array.isArray(data)||!data.length) return null;
-    return data.map(v=>({
-      videoId:      v.videoId,
-      title:        v.title,
-      uploaderName: v.channel,
-      duration:     v.duration,
-      thumbnail:    v.thumb,
-    }));
-  }catch{ return null; }
-}
-
 function openYTPicker(title, artist){
   pickerSong = {title, artist, ytId:null};
   document.getElementById('ytm-title').textContent = title + ' — ' + artist;
@@ -919,6 +937,299 @@ setInterval(()=>{
   el.style.cssText='left:'+Math.random()*100+'vw;font-size:'+(0.8+Math.random()*1.2)+'rem;animation-duration:'+(5+Math.random()*6)+'s;animation-delay:0s';
   rainEl.appendChild(el);setTimeout(()=>el.remove(),12000);
 },900);
+
+/* ═══════════════════════════════════════════════════════
+   VOICE CALL ENGINE — PeerJS P2P WebRTC
+   Each user gets a PeerID = roomCode + '_' + myId
+   On join: connect to every participant currently in room
+   Firebase rooms/{code}/voice/{myId} = {peerId, name, muted}
+   ═══════════════════════════════════════════════════════ */
+
+const VC = {
+  peer:       null,   // PeerJS instance
+  calls:      {},     // peerId → MediaConnection
+  streams:    {},     // peerId → MediaStream
+  audios:     {},     // peerId → <audio>
+  localStream:null,
+  inCall:     false,
+  muted:      false,
+  analyserInterval: null,
+  speakingState: {},  // peerId → bool
+};
+
+// ── UI refs ──────────────────────────────────────────
+const vcJoin   = document.getElementById('vc-join');
+const vcLeave  = document.getElementById('vc-leave');
+const vcMute   = document.getElementById('vc-mute');
+const vcStatus = document.getElementById('vc-status');
+const vcPeers  = document.getElementById('vc-peers');
+
+vcJoin.onclick  = joinVoice;
+vcLeave.onclick = leaveVoice;
+vcMute.onclick  = toggleMute;
+
+// ── Join voice call ───────────────────────────────────
+async function joinVoice() {
+  if (!S.code || !S.myId) { toast('Entra numa sala primeiro!'); return; }
+  if (VC.inCall) return;
+
+  // Check HTTPS / localhost requirement
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isSecure) {
+    toast('Chamada de voz só funciona em HTTPS. Faz o deploy no Vercel!');
+    vcStatus.textContent = 'Precisa HTTPS';
+    return;
+  }
+
+  // Check PeerJS loaded
+  if (typeof Peer === 'undefined') {
+    toast('A carregar biblioteca de voz… tenta de novo em 2 segundos');
+    vcStatus.textContent = 'A carregar…';
+    setTimeout(joinVoice, 2000);
+    return;
+  }
+
+  vcStatus.textContent = 'A pedir microfone…';
+  vcJoin.style.display = 'none';
+
+  // Request microphone
+  try {
+    VC.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    vcJoin.style.display = 'inline-block';
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      vcStatus.textContent = 'Microfone bloqueado';
+      toast('Permite o acesso ao microfone no browser! 🎤');
+    } else if (e.name === 'NotFoundError') {
+      vcStatus.textContent = 'Sem microfone';
+      toast('Nenhum microfone encontrado 🎤');
+    } else {
+      vcStatus.textContent = 'Erro microfone';
+      toast('Erro microfone: ' + e.message);
+    }
+    return;
+  }
+
+  vcStatus.textContent = 'A ligar…';
+  const myPeerId = 'kp_' + S.code + '_' + S.myId;
+
+  VC.peer = new Peer(myPeerId, {
+    host: '0.peerjs.com', port: 443, path: '/',
+    secure: true,
+    debug: 0,
+    config: { iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ]}
+  });
+
+  VC.peer.on('open', async () => {
+    if(VC.peer._peerTimeout) clearTimeout(VC.peer._peerTimeout);
+    VC.inCall = true;
+    vcLeave.style.display = 'inline-block';
+    vcMute.style.display  = 'inline-block';
+    vcStatus.textContent  = '🟢 Ligado';
+
+    // Register in Firebase
+    await set(dbr('rooms/'+S.code+'/voice/'+S.myId), {
+      peerId: myPeerId, name: S.myName, muted: false, ts: Date.now()
+    });
+
+    // Call everyone already in the voice room
+    const snap = await get(dbr('rooms/'+S.code+'/voice'));
+    const others = snap.val() || {};
+    for (const [uid, info] of Object.entries(others)) {
+      if (uid === S.myId || !info.peerId) continue;
+      callPeer(info.peerId, info.name);
+    }
+
+    // Listen for Firebase voice roster changes
+    listenVoiceRoster();
+    startSpeakingDetection();
+    renderVoicePeers();
+  });
+
+  // Answer incoming calls
+  VC.peer.on('call', call => {
+    call.answer(VC.localStream);
+    handleCall(call, call.metadata?.name || '???');
+  });
+
+  // Timeout: se o servidor PeerJS não responder em 8s
+  const _peerTimeout = setTimeout(() => {
+    if (!VC.inCall) {
+      if (VC.localStream) { VC.localStream.getTracks().forEach(t=>t.stop()); VC.localStream=null; }
+      if (VC.peer) { try{VC.peer.destroy()}catch{} VC.peer=null; }
+      vcJoin.style.display = 'inline-block';
+      vcStatus.textContent = 'Timeout';
+      toast('Servidor de voz inacessível. Tenta no Vercel (HTTPS).');
+    }
+  }, 8000);
+  VC.peer._peerTimeout = _peerTimeout;
+
+  VC.peer.on('error', e => {
+    clearTimeout(_peerTimeout);
+    if (e.type === 'peer-unavailable') return;
+    console.warn('PeerJS error:', e.type, e.message);
+    if (e.type === 'unavailable-id') {
+      if (VC.peer) { try{VC.peer.destroy()}catch{} VC.peer=null; }
+      setTimeout(joinVoice, 800);
+    } else if (!VC.inCall) {
+      vcJoin.style.display = 'inline-block';
+      vcStatus.textContent = 'Erro ligação';
+      toast('Erro voz: ' + e.type + '. Certifica que estás em HTTPS (Vercel).');
+    }
+  });
+}
+
+// ── Call a specific peer ──────────────────────────────
+function callPeer(peerId, peerName) {
+  if (!VC.peer || VC.calls[peerId]) return;
+  const call = VC.peer.call(peerId, VC.localStream, { metadata: { name: S.myName } });
+  if (!call) return;
+  handleCall(call, peerName);
+}
+
+function handleCall(call, peerName) {
+  VC.calls[call.peer] = call;
+
+  call.on('stream', remoteStream => {
+    VC.streams[call.peer] = remoteStream;
+    const audio = new Audio();
+    audio.srcObject = remoteStream;
+    audio.autoplay  = true;
+    audio.volume    = 1;
+    VC.audios[call.peer] = audio;
+    renderVoicePeers();
+  });
+
+  call.on('close', () => {
+    delete VC.calls[call.peer];
+    delete VC.streams[call.peer];
+    if (VC.audios[call.peer]) { VC.audios[call.peer].srcObject = null; delete VC.audios[call.peer]; }
+    renderVoicePeers();
+  });
+
+  call.on('error', () => {
+    delete VC.calls[call.peer];
+    renderVoicePeers();
+  });
+}
+
+// ── Listen for new people joining voice ──────────────
+let vcRosterUnsub = null;
+function listenVoiceRoster() {
+  const r = dbr('rooms/'+S.code+'/voice');
+  onValue(r, snap => {
+    const roster = snap.val() || {};
+    renderVoicePeers(roster);
+    if (!VC.inCall) return;
+    // Call anyone new who we're not already connected to
+    for (const [uid, info] of Object.entries(roster)) {
+      if (uid === S.myId || !info.peerId) continue;
+      if (!VC.calls[info.peerId]) callPeer(info.peerId, info.name);
+    }
+  });
+  vcRosterUnsub = () => off(r);
+  S.unsubs.push(vcRosterUnsub);
+}
+
+// ── Render voice peers list ───────────────────────────
+async function renderVoicePeers(rosterOverride) {
+  let roster = rosterOverride;
+  if (!roster) {
+    const snap = await get(dbr('rooms/'+S.code+'/voice'));
+    roster = snap.val() || {};
+  }
+  vcPeers.innerHTML = '';
+  for (const [uid, info] of Object.entries(roster)) {
+    const isMe = uid === S.myId;
+    const peerId = info.peerId;
+    const connected = isMe || !!VC.calls[peerId];
+    const speaking  = VC.speakingState[peerId] || false;
+    const isMuted   = isMe ? VC.muted : !!info.muted;
+
+    const div = document.createElement('div');
+    div.className = 'vpeer' + (speaking ? ' speaking' : '') + (isMuted ? ' muted' : '');
+    div.id = 'vpeer_' + uid;
+    div.innerHTML = `
+      <div class="vpeer-dot"></div>
+      <span style="flex:1">${esc(info.name)}${isMe?' (tu)':''}</span>
+      <span style="font-size:.65rem;color:var(--muted)">${isMuted?'🔇':connected?'':'⏳'}</span>`;
+    vcPeers.appendChild(div);
+  }
+  if (!Object.keys(roster).length) vcPeers.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">Ninguém na chamada</div>';
+}
+
+// ── Speaking detection (volume analysis) ─────────────
+function startSpeakingDetection() {
+  if (!VC.localStream) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  const src = ctx.createMediaStreamSource(VC.localStream);
+  src.connect(analyser);
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  const myPeerId = VC.peer?.id;
+
+  VC.analyserInterval = setInterval(() => {
+    analyser.getByteFrequencyData(buf);
+    const avg = buf.reduce((a,b)=>a+b,0)/buf.length;
+    const speaking = avg > 15;
+    if (VC.speakingState[myPeerId] !== speaking) {
+      VC.speakingState[myPeerId] = speaking;
+      const el = vcPeers.querySelector('#vpeer_'+S.myId);
+      if (el) el.classList.toggle('speaking', speaking && !VC.muted);
+    }
+  }, 150);
+}
+
+// ── Toggle mute ───────────────────────────────────────
+async function toggleMute() {
+  VC.muted = !VC.muted;
+  if (VC.localStream) {
+    VC.localStream.getAudioTracks().forEach(t => t.enabled = !VC.muted);
+  }
+  vcMute.textContent = VC.muted ? '🔇 Desmutado' : '🎙️ Mudo';
+  vcMute.classList.toggle('muted', VC.muted);
+  // Update Firebase so others see muted state
+  await set(dbr('rooms/'+S.code+'/voice/'+S.myId+'/muted'), VC.muted);
+  renderVoicePeers();
+}
+
+// ── Leave voice call ──────────────────────────────────
+async function leaveVoice() {
+  if (VC.analyserInterval) { clearInterval(VC.analyserInterval); VC.analyserInterval = null; }
+  // Close all calls
+  for (const call of Object.values(VC.calls)) { try { call.close(); } catch {} }
+  VC.calls = {}; VC.streams = {}; VC.speakingState = {};
+  // Stop all audios
+  for (const a of Object.values(VC.audios)) { a.srcObject = null; } VC.audios = {};
+  // Stop microphone
+  if (VC.localStream) { VC.localStream.getTracks().forEach(t => t.stop()); VC.localStream = null; }
+  // Destroy peer
+  if (VC.peer) { try { VC.peer.destroy(); } catch {} VC.peer = null; }
+  VC.inCall = false; VC.muted = false;
+  // Remove from Firebase
+  if (S.code && S.myId) await remove(dbr('rooms/'+S.code+'/voice/'+S.myId));
+  vcJoin.style.display  = 'inline-block';
+  vcLeave.style.display = 'none';
+  vcMute.style.display  = 'none';
+  vcMute.textContent    = '🎙️ Mudo';
+  vcMute.classList.remove('muted');
+  vcStatus.textContent  = 'Desligado';
+  vcPeers.innerHTML     = '';
+}
+
+// ── Auto-cleanup on room leave ────────────────────────
+const _origDoLeave = doLeave;
+// Patch doLeave to also clean up voice
+const _patchedDoLeave = async function(){
+  if(VC.inCall) await leaveVoice();
+  await _origDoLeave();
+};
+document.getElementById('leave-btn').onclick = _patchedDoLeave;
 
 </script>
 <script src="https://www.youtube.com/iframe_api" defer></script>
