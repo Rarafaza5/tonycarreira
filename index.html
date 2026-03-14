@@ -772,85 +772,92 @@ async function searchSongs(){
 }
 
 /* --- YouTube Picker Modal --- */
-// Calls our own Vercel serverless function /api/ytsearch
-// which scrapes YouTube server-side — no API key, no CORS issues.
-let pickerSong = {title:'', artist:'', ytId:null};
+// Calls /api/ytsearch (Vercel serverless) — no API key, no CORS issues.
+// Falls back to manual YouTube link when running locally.
 
-function openYTPicker(title, artist){
-  pickerSong = {title, artist, ytId:null};
+async function searchYouTube(query) {
+  // On Vercel: call our own serverless scraper
+  // Locally (no /api/): go straight to fallback
+  try {
+    const r = await fetch('/api/ytsearch?q=' + encodeURIComponent(query), { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    return data.map(v => ({ videoId: v.videoId, title: v.title, uploaderName: v.channel, duration: v.duration, thumbnail: v.thumb }));
+  } catch { return null; }
+}
+
+let pickerSong = { title:'', artist:'', ytId:null };
+
+function openYTPicker(title, artist) {
+  pickerSong = { title, artist, ytId: null };
   document.getElementById('ytm-title').textContent = title + ' — ' + artist;
-  const defaultQ = artist+' '+title+' karaoke instrumental';
+  const defaultQ = artist + ' ' + title + ' karaoke instrumental';
   document.getElementById('ytm-q').value = defaultQ;
-  document.getElementById('yt-modal').style.display='flex';
+  document.getElementById('yt-modal').style.display = 'flex';
   doYTSearch(defaultQ);
 }
 
-async function doYTSearch(query){
+async function doYTSearch(query) {
   const el = document.getElementById('ytm-results');
   el.innerHTML = '<div class="ytm-loading"><div class="spin"></div>A pesquisar no YouTube…</div>';
   const items = await searchYouTube(query);
-  if(!items){
-    const ytUrl = 'https://www.youtube.com/results?search_query='+encodeURIComponent(query);
+  if (!items) {
+    const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
     el.innerHTML = `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:.8rem">
         <div style="font-size:.8rem;color:var(--white);font-weight:500">🔍 Pesquisa manual</div>
         <div style="font-size:.75rem;color:var(--muted);line-height:1.6">
+          A pesquisa automática só funciona depois do deploy no Vercel.<br/>
           Abre o YouTube, encontra o karaoke/instrumental, copia o link e cola aqui.
         </div>
-        <a href="${ytUrl}" target="_blank" class="btn btn-yellow btn-sm" style="text-align:center;text-decoration:none">
-          Abrir YouTube 🔗
-        </a>
+        <a href="${ytUrl}" target="_blank" class="btn btn-yellow btn-sm" style="text-align:center;text-decoration:none">Abrir YouTube 🔗</a>
         <div style="display:flex;gap:.5rem">
           <input id="ytm-manual-link" type="text" placeholder="https://youtube.com/watch?v=..." style="flex:1;font-size:.78rem"/>
           <button class="btn btn-pink btn-sm" id="ytm-manual-add">✓ Usar</button>
         </div>
       </div>`;
-    document.getElementById('ytm-manual-add').onclick=()=>{
-      const url=document.getElementById('ytm-manual-link').value.trim();
-      const id=ytIdOf(url);
-      if(!id){toast('Link inválido! Usa o formato youtube.com/watch?v=...');return}
+    document.getElementById('ytm-manual-add').onclick = () => {
+      const url = document.getElementById('ytm-manual-link').value.trim();
+      const id  = ytIdOf(url);
+      if (!id) { toast('Link inválido! Usa youtube.com/watch?v=...'); return; }
       closeYTPicker(id);
     };
-    // Also allow pasting and pressing Enter
-    document.getElementById('ytm-manual-link').onkeypress=e=>{
-      if(e.key==='Enter'){
-        const url=document.getElementById('ytm-manual-link').value.trim();
-        const id=ytIdOf(url);
-        if(id)closeYTPicker(id); else toast('Link inválido!');
+    document.getElementById('ytm-manual-link').onkeypress = e => {
+      if (e.key === 'Enter') {
+        const id = ytIdOf(document.getElementById('ytm-manual-link').value.trim());
+        if (id) closeYTPicker(id); else toast('Link inválido!');
       }
     };
     return;
   }
-  el.innerHTML='';
-  items.forEach(v=>{
-    const videoId = v.videoId||'';
-    if(!videoId)return;
-    const thumb = v.thumbnail||`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-    const dur = v.duration||'';
-    const div=document.createElement('div');div.className='ytm-item';
-    div.innerHTML=`
-      <img class="ytm-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.background='var(--border)'"/>
+  el.innerHTML = '';
+  items.forEach(v => {
+    if (!v.videoId) return;
+    const div = document.createElement('div');
+    div.className = 'ytm-item';
+    div.innerHTML = `
+      <img class="ytm-thumb" src="${esc(v.thumbnail||'')}" loading="lazy" onerror="this.style.background='var(--border)'"/>
       <div class="ytm-info">
         <span class="ytm-vtitle">${esc(v.title)}</span>
-        <span class="ytm-vchan">${esc(v.uploaderName||'')}${dur?' · '+dur:''}</span>
+        <span class="ytm-vchan">${esc(v.uploaderName||'')}${v.duration?' · '+v.duration:''}</span>
       </div>
       <button class="btn btn-pink btn-sm ytm-add">Usar</button>`;
-    div.querySelector('.ytm-add').onclick=e=>{e.stopPropagation();closeYTPicker(videoId)};
+    div.querySelector('.ytm-add').onclick = e => { e.stopPropagation(); closeYTPicker(v.videoId); };
     el.appendChild(div);
   });
 }
 
-function closeYTPicker(ytId){
-  document.getElementById('yt-modal').style.display='none';
-  addToQueue(pickerSong.title, pickerSong.artist, ytId ? 'https://youtube.com/watch?v='+ytId : null);
+function closeYTPicker(ytId) {
+  document.getElementById('yt-modal').style.display = 'none';
+  addToQueue(pickerSong.title, pickerSong.artist, ytId ? 'https://youtube.com/watch?v=' + ytId : null);
 }
 
-document.getElementById('ytm-close').onclick=()=>document.getElementById('yt-modal').style.display='none';
-document.getElementById('ytm-skip').onclick=()=>closeYTPicker(null);
-document.getElementById('ytm-search').onclick=()=>doYTSearch(document.getElementById('ytm-q').value.trim());
-document.getElementById('ytm-q').onkeypress=e=>{if(e.key==='Enter')doYTSearch(document.getElementById('ytm-q').value.trim())};
-// Close on overlay click
-document.getElementById('yt-modal').onclick=e=>{if(e.target===document.getElementById('yt-modal'))document.getElementById('yt-modal').style.display='none'};
+document.getElementById('ytm-close').onclick  = () => document.getElementById('yt-modal').style.display = 'none';
+document.getElementById('ytm-skip').onclick   = () => closeYTPicker(null);
+document.getElementById('ytm-search').onclick = () => doYTSearch(document.getElementById('ytm-q').value.trim());
+document.getElementById('ytm-q').onkeypress   = e => { if (e.key === 'Enter') doYTSearch(document.getElementById('ytm-q').value.trim()); };
+document.getElementById('yt-modal').onclick   = e => { if (e.target === document.getElementById('yt-modal')) document.getElementById('yt-modal').style.display = 'none'; };
 
 async function addToQueue(title,artist,ytUrl){
   const snap=await get(dbr('rooms/'+S.code+'/queue'));
