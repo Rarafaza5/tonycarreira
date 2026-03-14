@@ -163,7 +163,147 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
 /* TOAST */
 #toast{position:fixed;bottom:1.4rem;right:1.4rem;z-index:99999;background:var(--card);border:1px solid var(--cyan);color:var(--white);padding:.6rem 1.2rem;border-radius:8px;font-size:.8rem;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .25s,transform .25s}
 #toast.show{opacity:1;transform:translateY(0)}
-@media(max-width:640px){.sidebar{display:none}#rm-screen.active{flex-direction:column}.main{padding:.9rem}}
+
+/* ═══════════════════════════════════
+   MOBILE RESPONSIVE — full rewrite
+═══════════════════════════════════ */
+
+/* Mobile drawer overlay */
+.drawer-overlay{
+  display:none;position:fixed;inset:0;z-index:800;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(2px);
+}
+.drawer-overlay.open{display:block}
+
+/* Bottom nav bar (mobile only) */
+.bottom-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;z-index:700;
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  height:56px;
+  grid-template-columns:repeat(4,1fr);
+  align-items:stretch;
+}
+.bn-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;background:none;border:none;cursor:pointer;
+  color:var(--muted);font-family:var(--fb);font-size:.56rem;
+  letter-spacing:.04em;text-transform:uppercase;
+  transition:color .15s;padding:0;
+}
+.bn-btn.active{color:var(--cyan)}
+.bn-btn .bn-icon{font-size:1.1rem;line-height:1}
+.bn-badge{
+  position:absolute;top:6px;right:calc(50% - 16px);
+  background:var(--pink);color:#fff;
+  font-size:.5rem;font-weight:700;
+  border-radius:50%;width:14px;height:14px;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.bn-btn{position:relative}
+
+/* Mobile panels — stack vertically, hidden by default */
+.mobile-panel{
+  display:none;flex-direction:column;
+}
+.mobile-panel.active{display:flex}
+
+/* Mobile header bar inside room */
+.room-header{
+  display:none;
+  align-items:center;justify-content:space-between;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:.65rem 1rem;
+  position:sticky;top:0;z-index:600;
+}
+.room-header-code{
+  font-family:var(--fh);font-size:1.3rem;color:var(--yellow);
+  letter-spacing:.12em;cursor:pointer;
+}
+.room-header-name{font-size:.7rem;color:var(--muted)}
+
+@media(max-width:660px){
+  /* Show mobile chrome */
+  .bottom-nav{display:grid}
+  .room-header{display:flex}
+
+  /* Hide desktop sidebar */
+  .sidebar{
+    position:fixed;top:0;left:0;bottom:0;z-index:900;
+    width:80vw;max-width:300px;
+    transform:translateX(-100%);
+    transition:transform .25s ease;
+    height:100vh;
+    overflow-y:auto;
+    padding-bottom:70px;
+  }
+  .sidebar.open{transform:translateX(0)}
+
+  /* Room layout becomes full-width column */
+  #rm-screen.active{display:flex;flex-direction:column}
+  .main{
+    padding:.75rem .75rem 70px;
+    max-height:none;overflow-y:visible;
+  }
+
+  /* Bigger tap targets */
+  .btn{padding:.7rem 1.4rem;font-size:.8rem}
+  .btn-sm{padding:.5rem .9rem;font-size:.75rem}
+  .vbtn{padding:.5rem .9rem;font-size:.74rem}
+
+  /* Now playing card — tighter on mobile */
+  .np-card{padding:1rem}
+  .np-title-el{font-size:1.4rem}
+  .yt-wrap{max-height:200px;margin:.6rem 0}
+  .pcontrols{padding:.5rem .7rem;gap:.5rem}
+  .pbar{height:5px}
+  .pbar::-webkit-slider-thumb{width:16px;height:16px}
+
+  /* Lyrics bigger for karaoke */
+  .lbox{max-height:220px;padding:.9rem 1rem}
+  .lyric{font-size:1.05rem}
+  .lyric.active{font-size:1.25rem}
+
+  /* Search results full width */
+  .ri{flex-wrap:wrap;gap:.5rem}
+  .ri .btn{width:100%}
+
+  /* Chat shorter on mobile */
+  .cmsgs{height:130px}
+
+  /* YT modal full screen on mobile */
+  .yt-modal-overlay{align-items:flex-end;padding:0}
+  .yt-modal{
+    border-radius:14px 14px 0 0;
+    max-height:88vh;
+    width:100%;
+    max-width:100%;
+  }
+  .ytm-results{max-height:50vh}
+
+  /* Hero smaller */
+  .htitle{font-size:clamp(3.5rem,20vw,5.5rem)}
+  .hrow{gap:.5rem}
+  .hrow .btn{padding:.65rem 1.4rem}
+
+  /* Panels full width */
+  .panel{max-width:100%;margin:.5rem}
+
+  /* Voice section in sidebar always visible on mobile via drawer */
+  .voice-section{padding-top:.8rem}
+}
+
+@media(max-width:380px){
+  .htitle{font-size:3.2rem}
+  .main{padding:.6rem .6rem 70px}
+  .np-title-el{font-size:1.2rem}
+  .lyric{font-size:.95rem}
+  .lyric.active{font-size:1.1rem}
+}
+
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
 /* YT PICKER MODAL */
@@ -253,7 +393,34 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
 
 <!-- ROOM -->
 <div id="rm-screen" class="screen">
-  <aside class="sidebar">
+  <!-- Mobile header -->
+  <div class="room-header" id="room-header">
+    <div>
+      <div class="room-header-name" id="rname-m"></div>
+      <div class="room-header-code" id="rc-m" onclick="openDrawer()">------  📋</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="openDrawer()" style="font-size:.75rem">☰ Sala</button>
+  </div>
+  <!-- Drawer overlay -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+  <!-- Bottom nav -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="bn-btn active" id="bn-play" onclick="mobileTab('play')">
+      <span class="bn-icon">▶</span>A tocar
+    </button>
+    <button class="bn-btn" id="bn-search" onclick="mobileTab('search')">
+      <span class="bn-icon">🔍</span>Pesquisar
+    </button>
+    <button class="bn-btn" id="bn-queue" onclick="mobileTab('queue')">
+      <span class="bn-icon">🎵</span>Fila
+      <div class="bn-badge" id="queue-badge" style="display:none">0</div>
+    </button>
+    <button class="bn-btn" id="bn-chat" onclick="mobileTab('chat')">
+      <span class="bn-icon">💬</span>Chat
+      <div class="bn-badge" id="chat-badge" style="display:none">0</div>
+    </button>
+  </nav>
+  <aside class="sidebar" id="sidebar">
     <div class="code-block">
       <div class="clabel">Código da Sala</div>
       <div class="crow"><div class="rcode" id="rc">------</div><button class="cpbtn" id="cp-btn">📋</button></div>
@@ -333,14 +500,14 @@ details.manual summary{cursor:pointer;color:var(--muted);font-size:.7rem}
     </div>
 
     <!-- ADD SONG -->
-    <div class="add-card">
+    <div class="add-card mobile-panel active" id="panel-search">
       <div class="ctitle">Adicionar à Fila 🎵</div>
       <div class="srow"><input id="sq" type="text" placeholder="Pesquisar música ou artista…"/><button class="btn btn-yellow btn-sm" id="search-btn">Pesquisar</button></div>
       <div id="sres" class="results"></div>
     </div>
 
     <!-- CHAT -->
-    <div class="chat-card">
+    <div class="chat-card mobile-panel active" id="panel-chat">
       <div class="ctitle">Chat 💬</div>
       <div id="cmsg" class="cmsgs"></div>
       <div class="chat-row"><input id="cin" type="text" placeholder="Escreve algo…" maxlength="200"/><button class="btn btn-ghost btn-sm" id="chat-send">Enviar</button></div>
@@ -1253,6 +1420,133 @@ const _patchedDoLeave = async function(){
   await _origDoLeave();
 };
 document.getElementById('leave-btn').onclick = _patchedDoLeave;
+
+/* ═══════════════════════════════════
+   MOBILE UI LOGIC
+═══════════════════════════════════ */
+
+let _currentTab = 'play';
+let _unreadChat = 0;
+
+function mobileTab(tab) {
+  _currentTab = tab;
+  // Update nav buttons
+  ['play','search','queue','chat'].forEach(t => {
+    document.getElementById('bn-'+t)?.classList.toggle('active', t === tab);
+  });
+
+  const isMobile = window.innerWidth <= 660;
+  if (!isMobile) return;
+
+  // Show/hide content sections
+  const npCard   = document.getElementById('np-card');
+  const idle     = document.getElementById('idle');
+  const pSearch  = document.getElementById('panel-search');
+  const pChat    = document.getElementById('panel-chat');
+
+  // np-card and idle always show on "play" tab
+  // The add-card and chat-card toggle
+  if (tab === 'play') {
+    if (pSearch) { pSearch.classList.add('active'); pSearch.style.display = ''; }
+    if (pChat)   { pChat.classList.add('active');   pChat.style.display = ''; }
+  } else if (tab === 'search') {
+    if (pSearch) { pSearch.style.display = ''; pSearch.classList.add('active'); }
+    if (pChat)   { pChat.style.display = 'none'; }
+    document.getElementById('sq')?.focus();
+  } else if (tab === 'queue') {
+    openDrawer(); return;
+  } else if (tab === 'chat') {
+    if (pSearch) { pSearch.style.display = 'none'; }
+    if (pChat)   { pChat.style.display = ''; pChat.classList.add('active'); }
+    _unreadChat = 0;
+    const badge = document.getElementById('chat-badge');
+    if (badge) badge.style.display = 'none';
+    setTimeout(() => {
+      const msgs = document.getElementById('cmsg');
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+      document.getElementById('cin')?.focus();
+    }, 50);
+  }
+}
+
+function openDrawer() {
+  document.getElementById('sidebar')?.classList.add('open');
+  document.getElementById('drawer-overlay')?.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('drawer-overlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Update mobile header when entering room
+function updateMobileHeader() {
+  const rcm = document.getElementById('rc-m');
+  const rnam = document.getElementById('rname-m');
+  if (rcm)  rcm.textContent  = (S.code || '------') + '  📋';
+  if (rnam) rnam.textContent = S.roomName || '';
+  // Click to copy
+  if (rcm) rcm.onclick = () => {
+    navigator.clipboard.writeText(S.code).then(() => toast('Código copiado! 📋'));
+  };
+}
+
+// Update queue badge
+function updateQueueBadge(count) {
+  const badge = document.getElementById('queue-badge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
+  else           { badge.style.display = 'none'; }
+}
+
+// Intercept renderQueue to update badge
+const _origRenderQueue = renderQueue;
+renderQueue = function(arr) {
+  _origRenderQueue(arr);
+  updateQueueBadge(arr.length);
+};
+
+// Intercept enterRoom to set up mobile header
+const _origEnterRoom = enterRoom;
+enterRoom = function() {
+  _origEnterRoom();
+  updateMobileHeader();
+  // Reset to play tab
+  mobileTab('play');
+};
+
+// Chat badge — increment when new message arrives and not on chat tab
+const _origAppendMsg = appendMsg;
+appendMsg = function(m) {
+  _origAppendMsg(m);
+  if (_currentTab !== 'chat' && m.type !== 'sys') {
+    _unreadChat++;
+    const badge = document.getElementById('chat-badge');
+    if (badge) { badge.textContent = _unreadChat > 9 ? '9+' : _unreadChat; badge.style.display = 'flex'; }
+  }
+};
+
+// Close drawer on leave
+const _origDoLeaveM = doLeave;
+doLeave = async function() {
+  closeDrawer();
+  await _origDoLeaveM();
+};
+document.getElementById('leave-btn').onclick = async () => {
+  closeDrawer();
+  if(VC.inCall) await leaveVoice();
+  await _origDoLeaveM();
+};
+
+// Swipe to close drawer
+let _touchStartX = 0;
+document.addEventListener('touchstart', e => { _touchStartX = e.touches[0].clientX; }, {passive:true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - _touchStartX;
+  if (dx < -60 && document.getElementById('sidebar')?.classList.contains('open')) closeDrawer();
+}, {passive:true});
 
 </script>
 <script src="https://www.youtube.com/iframe_api" defer></script>
