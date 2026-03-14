@@ -565,8 +565,16 @@ function buildYT(videoId,autoplay,isCtrl){
         if(isCtrl){
           if(st===YT.PlayerState.PLAYING||st===YT.PlayerState.PAUSED){pushPB();updatePPBtn()}
           if(st===YT.PlayerState.PLAYING){startPint();startLyricsSync()}
+          if(st===YT.PlayerState.ENDED){
+            // Song finished — auto-advance to next
+            pushPB();
+            stopLyrics();stopPint();
+            set(dbr('rooms/'+S.code+'/playback'),{playing:false,position:0,ts:Date.now(),ended:true});
+            startNext();
+          }
         }else{
           if(st===YT.PlayerState.PLAYING){showSyncOverlay(false);startLyricsSync()}
+          if(st===YT.PlayerState.ENDED){stopLyrics()}
         }
       }
     }
@@ -639,6 +647,7 @@ function initSpecYT(videoId){
 
 function applyRemotePB(pb){
   if(!pb)return;
+  if(pb.ended&&!pb.playing)return; // song finished, startNext handles the rest
   const lag=(Date.now()-pb.ts)/1000;
   const target=pb.position+(pb.playing?lag:0);
 
@@ -652,12 +661,19 @@ function applyRemotePB(pb){
     const diff=Math.abs(cur-target);
     if(pb.playing){
       if(diff>1.5)S.ytp.seekTo(target,true);
-      if(st!==YT.PlayerState.PLAYING){S.ytp.seekTo(target,true);S.ytp.playVideo();showSyncOverlay(false)}
+      if(st!==YT.PlayerState.PLAYING){
+        S.ytp.seekTo(target,true);
+        S.ytp.playVideo();
+        showSyncOverlay(false);
+      }
       if(S.ldata?.type==='synced')hlLyric(S.ytp.getCurrentTime()||target);
     }else{
+      // Controller paused or stopped — everyone must pause immediately
       if(st===YT.PlayerState.PLAYING){S.ytp.pauseVideo()}
       if(diff>0.5)S.ytp.seekTo(target,true);
-      showSyncOverlay(true,'⏸ Pausado pelo cantor');
+      showSyncOverlay(true,'⏸ Pausado');
+      stopLyrics();
+      killSpectatorTimer();
       if(S.ldata?.type==='synced')hlLyric(target);
     }
   }catch{}
