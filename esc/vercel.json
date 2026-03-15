@@ -1055,7 +1055,7 @@ const db = getDatabase(app);
 
 /* ── STATE ── */
 const S = {
-  code:null,roomName:null,myId:null,myName:null,
+  code:null,roomName:null,myId:null,myName:null,hostId:null,
   unsubs:[],nowPlaying:null,lastNpKey:null,
   ldata:null,ytp:null,ytReady:false,specTimer:null,
   progTimer:null,progPos:0,progPlaying:false,progTs:0
@@ -1163,10 +1163,10 @@ async function tryEnter() {
       return;
     }
     const myId = mkId();
-    await set(dbr('rooms/'+code+'/participants/'+myId), {name, isHost:false, isAudience:true});
+    await set(dbr('rooms/'+code+'/participants/'+myId), {name, isHost:false, isAudience:true, joinedAt:Date.now()});
     const d = snap.val();
     const hostName = d.participants?.[d.host]?.name || 'Streamer';
-    Object.assign(S, {code, roomName:d.name, myId, myName:name});
+    Object.assign(S, {code, roomName:d.name, myId, myName:name, hostId:d.host});
     enterShow(hostName);
   } catch(e) {
     err.textContent = 'Erro: ' + e.message;
@@ -1429,7 +1429,7 @@ function listenChat() {
       d.className='msg'+(m.type==='sys'?' sys':'')+(m.authorId===S.myId?' mine':'');
       if (m.type==='sys') d.textContent=m.text;
       else {
-        const cls=m.isAudience?'audience':m.isHost?'streamer':'singer';
+        const cls = m.authorId === S.hostId ? 'streamer' : (m.isAudience ? 'audience' : 'singer');
         d.innerHTML='<span class="who '+cls+'">'+esc(m.author)+'</span>'+esc(m.text);
       }
       el.appendChild(d);
@@ -1459,7 +1459,7 @@ async function doLeave() {
     const snap=await get(dbr('rooms/'+S.code+'/participants'));
     if (!snap.val()) await remove(dbr('rooms/'+S.code));
   }
-  Object.assign(S,{code:null,roomName:null,myId:null,myName:null,unsubs:[],nowPlaying:null,lastNpKey:null,ldata:null,ytp:null});
+  Object.assign(S,{code:null,roomName:null,myId:null,myName:null,hostId:null,unsubs:[],nowPlaying:null,lastNpKey:null,ldata:null,ytp:null});
   goScreen('enter');
   updateBoxes(''); codeInput.value='';
   document.getElementById('nick-input').value='';

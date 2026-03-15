@@ -424,7 +424,7 @@ const esc=s=>s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 const ytIdOf=url=>{if(!url)return null;const m=url.match(/(?:v=|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})/);return m?m[1]:null;};
 const fmt=s=>{s=Math.floor(s||0);return Math.floor(s/60)+':'+(s%60<10?'0':'')+(s%60);};
 const dbr=p=>ref(db,p);
-const audUrl=()=>location.origin+location.pathname.replace('admin.html','')+'?code='+S.code;
+const audUrl=()=>location.origin+'/index.html?code='+S.code;
 
 function toast(msg,d=3000){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),d);}
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
