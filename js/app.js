@@ -15,12 +15,18 @@ const S = {
   ytReady:false, ytPlayer:null,
 };
 
+// ── Voice / PeerJS State ──────────────────────────────────
+let myPeer = null;
+let activeCalls = {};
+let localStream = null;
+let wakeLock = null;
+
 // ── Boot ──────────────────────────────────────────────────
 window.addEventListener('fb-ready', () => {
   const { initializeApp, getDatabase, ref, set, get, update,
-          onValue, push, remove, off } = window._fb;
+          onValue, push, remove, off, onDisconnect } = window._fb;
   fbRef = ref; fbSet = set; fbGet = get; fbUpdate = update;
-  fbOnValue = onValue; fbOff = off; fbRemove = remove;
+  fbOnValue = onValue; fbOff = off; fbRemove = remove; fbOnDisconnect = onDisconnect;
 
   const raw = localStorage.getItem('kp_fb_cfg');
   if (!raw) { document.getElementById('cfg-modal').style.display = 'flex'; return; }
@@ -31,6 +37,14 @@ window.addEventListener('fb-ready', () => {
     initUI();
   } catch { document.getElementById('cfg-modal').style.display = 'flex'; }
 });
+
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+}
+function releaseWakeLock() {
+  if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); }
+}
+document.addEventListener('visibilitychange', () => { if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock(); });
 
 window.saveCfg = function() {
   const raw = document.getElementById('cfg-in').value.trim();
@@ -47,7 +61,20 @@ window.saveCfg = function() {
   } catch { toast('JSON inválido — verifica o formato ❌'); }
 };
 
-function initUI() { spawnNotes(); }
+function initUI() { 
+  spawnNotes(); 
+  const n = getRandomName();
+  ['c-name', 'j-name'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = n;
+  });
+}
+
+const PRE = ['Abelha', 'Chouriço', 'Pinto', 'Gato', 'Galo', 'Pinguim', 'Mestre', 'Voz', 'Anjo', 'Estrela', 'Lenda', 'Rei', 'Rainha', 'Faraó', 'Tubarão', 'Dragão'];
+const SUF = ['do Rock', 'Afinado', 'Famoso', 'do Fado', 'da Noite', 'do Pimba', 'Punk', 'Pop', 'Metal', 'da Tasca', 'Vip', 'dos Palcos', 'Divino', 'do Karaoké', 'Supremo'];
+function getRandomName() {
+  return PRE[Math.floor(Math.random()*PRE.length)] + ' ' + SUF[Math.floor(Math.random()*SUF.length)];
+}
 
 // ── Navigation ────────────────────────────────────────────
 window.goHome   = () => setScreen('home');
@@ -110,15 +137,40 @@ function enterRoom() {
   setScreen('room-screen');
   document.getElementById('rc').textContent    = S.code;
   document.getElementById('rname').textContent = S.roomName;
+  
+  if (db && S.code && S.myId) {
+    try { fbOnDisconnect(fbRef(db, `rooms/${S.code}/participants/${S.myId}`)).remove(); } catch(e){}
+  }
+
+  requestWakeLock();
   subscribeRoom();
   subscribeChat();
+  subscribeSuggestions();
 }
 
+let lastScoreRender = null;
 function subscribeRoom() {
   const r = fbRef(db, `rooms/${S.code}`);
   const unsub = fbOnValue(r, snap => {
     if (!snap.exists()) { leaveRoom(); return; }
-    applyRoom(snap.val());
+    const data = snap.val();
+    
+    // Offline detection of Host
+    if (data.hostActive === false && !S.isHost) {
+      toast('Sinal do Servidor Host perdeu-se! ⚠️', 5000);
+    }
+    
+    applyRoom(data);
+
+    const pb = data.playback;
+    if (pb && pb.ended && pb.score !== undefined) {
+      if (lastScoreRender !== pb.ts) {
+        lastScoreRender = pb.ts;
+        showScoreClient(pb.score);
+      }
+    } else {
+      document.getElementById('score-overlay').classList.remove('show');
+    }
   });
   S.unsub.push(() => fbOff(r));
 }
@@ -144,6 +196,16 @@ function applyRoom(data) {
   }
 }
 
+function subscribeSuggestions() {
+  const r = fbRef(db, `rooms/${S.code}/suggestions`);
+  const unsub = fbOnValue(r, snap => {
+    const data = snap.val() || {};
+    const sArr = Object.entries(data).sort(([,a],[,b])=>(b.votes||0)-(a.votes||0)).map(([id, s]) => ({id, ...s}));
+    renderSuggestions(sArr);
+  });
+  S.unsub.push(() => fbOff(r));
+}
+
 // ── Render ────────────────────────────────────────────────
 function renderParticipants(arr) {
   document.getElementById('pcnt').textContent = `(${arr.length})`;
@@ -151,6 +213,14 @@ function renderParticipants(arr) {
     <li class="${p.isHost?'p-host':''} ${p.id===S.myId?'p-me':''}">
       ${p.isHost?'👑':'🎤'} ${esc(p.name)}
     </li>`).join('');
+
+  // Voice Call logic
+  const vPeers = arr.filter(p => p.inVoice);
+  document.getElementById('vc-peers').innerHTML = vPeers.map(p => `
+    <div class="vpeer ${p.isMuted?'vmuted':''} ${!p.isMuted?'speaking':''}">
+      <div class="vpdot"></div>
+      ${esc(p.name)} ${p.id===S.myId ? '(Tu)' : ''}
+    </div>`).join('');
 }
 
 function renderQueue(arr) {
@@ -167,24 +237,48 @@ function renderQueue(arr) {
     </li>`).join('');
 }
 
+function renderSuggestions(arr) {
+  const el = document.getElementById('sugg-list');
+  if (!el) return;
+  if (!arr.length) { el.innerHTML = '<div class="qempty">Sem sugestões ativas</div>'; return; }
+  el.innerHTML = arr.map(s => `
+    <div class="res-item" style="display:flex; justify-content:space-between; align-items:center; background:var(--card); padding:0.6rem; border-radius:6px; margin-bottom:0.4rem; border:1px solid var(--bdr);">
+      <div style="display:flex; flex-direction:column;">
+        <span style="font-weight:700; font-size:0.8rem">${esc(s.title)}</span>
+        <span style="font-size:0.65rem; color:var(--dim)">por ${esc(s.suggestedBy)}</span>
+      </div>
+      <button class="btn btn-pink btn-sm" style="flex-shrink:0" onclick="voteSuggestion('${s.id}')">
+        ▲ ${s.votes||0}
+      </button>
+    </div>
+  `).join('');
+}
+
 function renderNowPlaying(np) {
   const card  = document.getElementById('np-card');
   const idle  = document.getElementById('idle');
   const sCtrl = document.getElementById('singer-ctrl');
   const hCtrl = document.getElementById('host-ctrl');
+  const rCard = document.getElementById('react-row');
+
+  document.getElementById('yt-error-overlay').style.display = 'none';
 
   if (!np) {
     card.style.display = 'none';
     idle.style.display = 'block';
-    sCtrl.style.display = hCtrl.style.display = 'none';
+    sCtrl.style.display = hCtrl.style.display = rCard.style.display = 'none';
     stopLyrics(); stopYT(); return;
   }
 
   card.style.display = 'block';
   idle.style.display = 'none';
+  rCard.style.display = 'flex';
   document.getElementById('np-who').textContent    = '🎤 ' + np.singerName;
   document.getElementById('np-title').textContent  = np.title;
   document.getElementById('np-artist').textContent = np.artist;
+  
+  if(document.getElementById('sync-display')) document.getElementById('sync-display').textContent = (np.syncOffset||0).toFixed(1);
+  if(document.getElementById('sync-display-h')) document.getElementById('sync-display-h').textContent= (np.syncOffset||0).toFixed(1);
 
   const mine = np.singerId === S.myId;
   sCtrl.style.display = mine ? 'flex' : 'none';
@@ -210,15 +304,25 @@ window.onYouTubeIframeAPIReady = function() { S.ytReady = true; };
 function loadYT(videoId) {
   if (S.ytPlayer) {
     try { S.ytPlayer.loadVideoById(videoId); S.ytPlayer.playVideo(); } catch {}
+    document.getElementById('yt-error-overlay').style.display = 'none';
     return;
   }
   if (!S.ytReady) { setTimeout(() => loadYT(videoId), 500); return; }
+  document.getElementById('yt-error-overlay').style.display = 'none';
   S.ytPlayer = new YT.Player('ytplayer', {
     videoId,
     playerVars: { autoplay:1, controls:1, rel:0 },
     events: {
       onStateChange: e => {
         if (e.data === YT.PlayerState.PLAYING) startLyricsSync();
+      },
+      onError: e => {
+        if (e.data === 150 || e.data === 101) {
+          document.getElementById('yt-error-overlay').style.display = 'flex';
+          setTimeout(() => { if (S.nowPlaying && S.nowPlaying.ytId === videoId) startNext(); }, 6000);
+        } else {
+          toast("Erro no Player YouTube: " + e.data);
+        }
       }
     }
   });
@@ -282,7 +386,8 @@ function startLyricsSync() {
   if (!S.ldata || S.ldata.type!=='synced') return;
   S.ltimer = setInterval(()=>{
     if (!S.ytPlayer?.getCurrentTime) return;
-    const t = S.ytPlayer.getCurrentTime();
+    const offset = S.nowPlaying?.syncOffset || 0;
+    const t = S.ytPlayer.getCurrentTime() + offset;
     const lines = S.ldata.lines;
     let cur = 0;
     for (let i=0; i<lines.length; i++) if (lines[i].t!==null && lines[i].t<=t) cur=i;
@@ -294,6 +399,13 @@ function startLyricsSync() {
   }, 300);
 }
 function stopLyrics() { if (S.ltimer) { clearInterval(S.ltimer); S.ltimer=null; } }
+
+window.adjustSync = async function(val) {
+  if (!S.nowPlaying || !S.code) return;
+  const cur = S.nowPlaying.syncOffset || 0;
+  const next = cur + val;
+  await fbSet(fbRef(db, `rooms/${S.code}/nowPlaying/syncOffset`), next);
+};
 
 // ── Song Search ───────────────────────────────────────────
 window.searchSongs = async function() {
@@ -330,20 +442,42 @@ window.addManual = function() {
 window.addToQueue = async function(title, artist, ytUrl) {
   if (!db) { toast('Firebase não configurado!'); return; }
   const songId = mkId();
-  const snap = await fbGet(fbRef(db, `rooms/${S.code}/queue`));
-  const existing = snap.val() || {};
-  const order = Object.keys(existing).length;
-  const item = { title, artist, ytId: ytId(ytUrl), singerId: S.myId, singerName: S.myName, _order: order };
+  
+  if (S.isHost) {
+    const snap = await fbGet(fbRef(db, `rooms/${S.code}/queue`));
+    const existing = snap.val() || {};
+    const order = Object.keys(existing).length;
+    const item = { title, artist, ytId: ytId(ytUrl), singerId: S.myId, singerName: S.myName, _order: order };
 
-  await fbSet(fbRef(db, `rooms/${S.code}/queue/${songId}`), item);
+    await fbSet(fbRef(db, `rooms/${S.code}/queue/${songId}`), item);
 
-  // If nothing playing, start immediately
-  const npSnap = await fbGet(fbRef(db, `rooms/${S.code}/nowPlaying`));
-  if (!npSnap.val()) await startNext();
+    const npSnap = await fbGet(fbRef(db, `rooms/${S.code}/nowPlaying`));
+    if (!npSnap.val()) await startNext();
 
-  toast(`"${title}" na fila! 🎵`);
+    toast(`"${title}" na fila! 🎵`);
+  } else {
+    // Audience suggestions
+    const item = { title, artist, ytId: ytId(ytUrl), suggestedBy: S.myName, votes: 1, ts: Date.now() };
+    await fbSet(fbRef(db, `rooms/${S.code}/suggestions/${songId}`), item);
+    toast(`"${title}" sugerida! 💡 Aguarda pelo aprovação do anfitrião.`);
+  }
+
   document.getElementById('sres').innerHTML = '';
   document.getElementById('sq').value = '';
+};
+
+window.voteSuggestion = async function(id) {
+  if (!db || !S.code) return;
+  try { if ('vibrate' in navigator) navigator.vibrate(30); } catch(e){}
+  const r = fbRef(db, `rooms/${S.code}/suggestions/${id}/votes`);
+  const snap = await fbGet(r);
+  const cur = snap.val() || 0;
+  await fbSet(r, cur + 1);
+  const btn = event.currentTarget;
+  if(btn) {
+    btn.style.transform = 'scale(1.2)';
+    setTimeout(() => btn.style.transform = 'scale(1)', 150);
+  }
 };
 
 window.removeQ = async function(id) {
@@ -423,7 +557,9 @@ function appendMsg(m) {
 
 // ── Leave Room ────────────────────────────────────────────
 window.leaveRoom = async function() {
+  leaveVoice(); // Ensure voice drops properly
   stopLyrics(); stopYT();
+  releaseWakeLock();
   S.unsub.forEach(fn=>{ try{fn()}catch{} }); S.unsub.length=0;
   if (db && S.code && S.myId) {
     await fbRemove(fbRef(db, `rooms/${S.code}/participants/${S.myId}`));
@@ -466,3 +602,179 @@ function spawnNotes() {
     setTimeout(()=>el.remove(),12000);
   }, 900);
 }
+
+window.sendReaction = async function(emoji) {
+  if (!db || !S.code) return;
+  // Cooldown logic (Pinnacle feature)
+  if (S.reactCooldown) return;
+  S.reactCooldown = true;
+  const btnEl = document.querySelector(`.react-btn[onclick*="'${emoji}'"]`);
+  if (btnEl) btnEl.style.opacity = '0.3';
+  setTimeout(() => { S.reactCooldown = false; if(btnEl) btnEl.style.opacity = '1'; }, 2000);
+
+  try { if ('vibrate' in navigator) navigator.vibrate(40); } catch(e){}
+  
+  // Create small local bubble for visual feedback!
+  const btn = document.querySelector(`.react-btn[data-emoji="${emoji}"]`) || document.getElementById('react-row');
+  const feed = document.createElement('span');
+  feed.textContent = emoji;
+  feed.style.position = 'absolute';
+  feed.style.fontSize = '2.4rem';
+  feed.style.top = btn ? (btn.getBoundingClientRect().top - 40) + 'px' : '50%';
+  feed.style.left = btn ? btn.getBoundingClientRect().left + 'px' : '50%';
+  feed.style.pointerEvents = 'none';
+  feed.style.transition = 'all 1s ease-out';
+  feed.style.zIndex = '9999';
+  document.body.appendChild(feed);
+  requestAnimationFrame(() => {
+    feed.style.transform = 'translateY(-100px) scale(1.5)';
+    feed.style.opacity = '0';
+  });
+  setTimeout(()=>feed.remove(), 1000);
+
+  // Save reaction in DB for visuals on Host
+  await fbSet(fbRef(db, `rooms/${S.code}/reactions/feed/${mkId()}`), { emoji, ts: Date.now() });
+
+  // Save sound event (Soundboard) for the Host to play
+  await fbSet(fbRef(db, `rooms/${S.code}/reactions/audio_sfx`), { emoji, ts: Date.now() });
+
+  // Increment internal counter natively safely
+  const snap = await fbGet(fbRef(db, `rooms/${S.code}/reactions/total`));
+  const current = snap.val() || 0;
+  await fbSet(fbRef(db, `rooms/${S.code}/reactions/total`), current + 1);
+
+  // Increment Crowd Power! (Game mechanic)
+  const cpSnap = await fbGet(fbRef(db, `rooms/${S.code}/playback/crowdPower`));
+  const cpVal = cpSnap.val() || 0;
+  if (cpVal < 100) await fbSet(fbRef(db, `rooms/${S.code}/playback/crowdPower`), Math.min(100, cpVal + 6));
+};
+
+// ── Voice Call (PeerJS) ───────────────────────────────────
+window.joinVoice = async function() {
+  if (myPeer) return;
+  document.getElementById('vc-status').textContent = 'A ligar...';
+  
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }, 
+      video: false 
+    });
+    
+    myPeer = new Peer(S.myId);
+    
+    myPeer.on('open', id => {
+      document.getElementById('vc-status').textContent = 'Voz Ativa 🎙️';
+      document.getElementById('vc-join').style.display = 'none';
+      document.getElementById('vc-leave').style.display = 'inline-block';
+      document.getElementById('vc-mute').style.display = 'inline-block';
+      
+      if (db && S.code && S.myId) {
+        fbUpdate(fbRef(db, `rooms/${S.code}/participants/${S.myId}`), { inVoice: true, isMuted: false });
+      }
+      
+      // Call others who are in voice
+      fbGet(fbRef(db, `rooms/${S.code}/participants`)).then(snap => {
+        const parts = snap.val() || {};
+        Object.keys(parts).forEach(peerId => {
+          if (peerId !== S.myId && parts[peerId].inVoice) {
+            callPeer(peerId);
+          }
+        });
+      });
+    });
+
+    myPeer.on('call', call => {
+      call.answer(localStream);
+      call.on('stream', remoteStream => {
+        addRemoteAudio(call.peer, remoteStream);
+      });
+      call.on('close', () => {
+        const audio = document.getElementById('audio-' + call.peer);
+        if (audio) audio.remove();
+      });
+      activeCalls[call.peer] = call;
+    });
+
+    myPeer.on('disconnected', () => {
+      if (myPeer) myPeer.reconnect();
+    });
+
+    myPeer.on('close', () => leaveVoice());
+
+    myPeer.on('error', err => {
+      if (err.type !== 'peer-unavailable') {
+        toast('Erro no PeerJS: ' + err.type);
+        leaveVoice();
+      }
+    });
+  } catch(e) {
+    toast('Sem acesso ao microfone! 🎙️❌');
+    document.getElementById('vc-status').textContent = 'Erro Mic';
+  }
+};
+
+function callPeer(peerId) {
+  if (!myPeer || !localStream) return;
+  const call = myPeer.call(peerId, localStream);
+  call.on('stream', remoteStream => {
+    addRemoteAudio(peerId, remoteStream);
+  });
+  call.on('close', () => {
+    const audio = document.getElementById('audio-' + peerId);
+    if (audio) audio.remove();
+  });
+  activeCalls[peerId] = call;
+}
+
+function addRemoteAudio(peerId, stream) {
+  let audio = document.getElementById('audio-' + peerId);
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.id = 'audio-' + peerId;
+    audio.controls = false;
+    audio.style.display = 'none';
+    audio.playsInline = true;
+    audio.autoplay = true;
+    document.body.appendChild(audio);
+  }
+  audio.srcObject = stream;
+}
+
+window.leaveVoice = function() {
+  if (myPeer) { myPeer.destroy(); myPeer = null; }
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  Object.values(activeCalls).forEach(c => c.close());
+  activeCalls = {};
+  
+  document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
+  
+  document.getElementById('vc-status').textContent = 'Desligado';
+  document.getElementById('vc-join').style.display = 'inline-block';
+  document.getElementById('vc-leave').style.display = 'none';
+  document.getElementById('vc-mute').style.display = 'none';
+  
+  if (db && S.code && S.myId) {
+    fbUpdate(fbRef(db, `rooms/${S.code}/participants/${S.myId}`), { inVoice: false, isMuted: false });
+  }
+};
+
+window.toggleMute = function() {
+  if (!localStream) return;
+  const audioTrack = localStream.getAudioTracks()[0];
+  if (audioTrack) {
+    audioTrack.enabled = !audioTrack.enabled;
+    const btn = document.getElementById('vc-mute');
+    if (audioTrack.enabled) {
+      btn.textContent = '🎙️ Mudo';
+      btn.classList.remove('muted');
+    } else {
+      btn.textContent = '🔇 Silêncio';
+      btn.classList.add('muted');
+    }
+    fbUpdate(fbRef(db, `rooms/${S.code}/participants/${S.myId}`), { isMuted: !audioTrack.enabled });
+  }
+};

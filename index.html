@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#08080e"/>
 <title>🎤 Karaoke Party</title>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Karaoke Party">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -132,13 +136,26 @@ input::placeholder{color:var(--dim)}
 /* ── LYRICS ── */
 .lbox{background:var(--surf);border-radius:10px;padding:1rem 1.2rem;min-height:80px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;margin-top:.5rem}
 .lyric{font-size:1rem;line-height:1.75;color:var(--dim);transition:all .25s;padding:.06rem 0}
-.lyric.active{color:var(--yel);font-size:1.2rem;text-shadow:0 0 16px rgba(255,226,64,.5);transform:translateX(6px)}
+.lyric.active{color:var(--yel);font-size:1.2rem;text-shadow:0 0-16px rgba(255,226,64,.5);transform:translateX(6px)}
 .lyric.past{color:var(--bdr);opacity:.55}
+.lyric{animation:ly-in .4s ease-out backwards}
+@keyframes ly-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .lnone{color:var(--dim);font-style:italic;font-size:.82rem;text-align:center;padding:.8rem}
 .lloader{display:flex;align-items:center;gap:.7rem;color:var(--dim);font-size:.78rem}
 .spin{width:16px;height:16px;border:2px solid var(--bdr);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ctrl-row{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.8rem}
+
+.sync-ctrls{display:flex;gap:.3rem;margin-left:auto;align-items:center;}
+.sync-btn{background:var(--surf);border:1px solid var(--bdr);color:var(--dim);font-family:var(--fb);font-size:.7rem;padding:.3rem .5rem;border-radius:4px;cursor:pointer;transition:.15s;}
+.sync-btn:active{color:var(--white);border-color:var(--dim);}
+
+.score-overlay{position:absolute;inset:0;background:rgba(12,14,20,.95);z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s ease;}
+.score-overlay.show{opacity:1;pointer-events:all;}
+.score-circle{width:160px;height:160px;border-radius:50%;border:8px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:4.5rem;font-weight:700;color:var(--prm);text-shadow:0 0 20px var(--cyan);box-shadow:0 0 40px rgba(0,255,255,.2), inset 0 0 40px rgba(0,255,255,.2);margin:1.5rem 0;}
+.score-title{font-size:1.8rem;font-weight:700;color:var(--white);text-align:center}
+.score-subtitle{font-size:1rem;color:var(--dim);margin-top:.4rem;text-align:center}
+
 .idle{text-align:center;padding:2.5rem 1rem;color:var(--dim)}
 .idle-icon{font-size:3rem;margin-bottom:.7rem;opacity:.35;display:block}
 
@@ -182,6 +199,13 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
 .vbtn-mute{background:var(--surf);color:var(--white);border:1px solid var(--bdr)}
 .vbtn-mute.muted{background:#ff5555;color:#fff;border-color:#ff5555}
 
+/* ── REACTIONS ── */
+.react-row{display:flex;margin-top:1rem;gap:1.4rem;justify-content:center;border-top:1px solid var(--bdr);padding-top:.8rem}
+.react-btn{font-size:1.6rem;transition:transform .1s ease-out;border:none;background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.react-btn:active{transform:scale(1.4)}
+@media(max-width:660px){.react-btn{font-size:1.8rem;}}
+
+
 /* ── YT MODAL ── */
 .ytmo{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:flex-end;padding:0}
 .ytmd{background:var(--card);border-radius:16px 16px 0 0;width:100%;max-height:90vh;display:flex;flex-direction:column}
@@ -204,6 +228,12 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
 /* ── TOAST ── */
 #toast{position:fixed;bottom:calc(70px + var(--safe-b) + .8rem);right:.9rem;z-index:99999;background:var(--card);border:1px solid var(--cyan);color:var(--white);padding:.6rem 1.1rem;border-radius:10px;font-size:.8rem;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .25s,transform .25s;box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:calc(100vw - 1.8rem)}
 #toast.show{opacity:1;transform:translateY(0)}
+
+.next-singer-overlay{position:fixed;inset:0;background:rgba(255,45,120,.95);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;opacity:0;pointer-events:none;transition:opacity .5s}
+.next-singer-overlay.show{opacity:1;pointer-events:all;animation:pulse-alert 1.5s infinite}
+@keyframes pulse-alert{0%,100%{background:rgba(255,45,120,.95)}50%{background:rgba(255,100,160,1)}}
+.ns-title{font-family:var(--fh);font-size:3rem;line-height:1;margin-bottom:1rem;color:#fff;text-shadow:0 0 20px rgba(255,255,255,.5)}
+.ns-sub{font-size:1.2rem;color:rgba(255,255,255,.8);margin-bottom:2rem}
 
 /* ── MOBILE CHROME ── */
 .room-topbar{display:none;align-items:center;justify-content:space-between;background:var(--surf);border-bottom:1px solid var(--bdr);padding:.6rem 1rem;position:sticky;top:0;z-index:500;flex-shrink:0}
@@ -367,9 +397,9 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
         <div class="vstitle">Chamada 🎙️<span class="vstatus" id="vc-status">Desligado</span></div>
         <div class="vpeers" id="vc-peers"></div>
         <div class="vbtns">
-          <button class="vbtn vbtn-join" id="vc-join">📞 Entrar</button>
-          <button class="vbtn vbtn-leave" id="vc-leave" style="display:none">📵 Sair</button>
-          <button class="vbtn vbtn-mute" id="vc-mute" style="display:none">🎙️ Mudo</button>
+          <button class="vbtn vbtn-join" id="vc-join" onclick="joinVoice()">📞 Entrar</button>
+          <button class="vbtn vbtn-leave" id="vc-leave" onclick="leaveVoice()" style="display:none">📵 Sair</button>
+          <button class="vbtn vbtn-mute" id="vc-mute" onclick="toggleMute()" style="display:none">🎙️ Mudo</button>
         </div>
       </div>
 
@@ -384,9 +414,21 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
         <div class="np-top"><span class="np-badge">▶ A TOCAR</span><span id="np-who" class="np-who"></span></div>
         <span id="np-title-el" class="np-title-el"></span>
         <span id="np-artist-el" class="np-artist-el"></span>
-        <div class="yt-wrap" id="yt-wrap" style="display:none">
+        <div class="yt-wrap" id="yt-wrap" style="display:none;position:relative;overflow:hidden;border-radius:12px;margin-bottom:0.8rem">
           <div id="ytplayer"></div>
           <div class="sync-overlay gone" id="sync-overlay"><div class="sdot"></div><span id="sync-label">A sincronizar…</span></div>
+          <div id="yt-error-overlay" style="display:none;position:absolute;inset:0;background:rgba(255,44,109,.9);flex-direction:column;align-items:center;justify-content:center;z-index:50;">
+            <div style="font-size:2.4rem;margin-bottom:1rem">🚫</div>
+            <div style="font-weight:700;font-size:1.2rem;margin-bottom:.4rem">Vídeo Bloqueado!</div>
+            <div style="font-size:.8rem;opacity:.9;margin-bottom:1.2rem;text-align:center;padding:0 1rem">O autor não permite reprodução neste site.</div>
+            <button class="btn btn-yel" onclick="startNext()">Saltar Música</button>
+          </div>
+          
+          <div class="score-overlay" id="score-overlay">
+            <div class="score-title">MÚSICA CONCLUÍDA!</div>
+            <div class="score-circle" id="score-val">0</div>
+            <div class="score-subtitle" id="score-sub">Aguarda os resultados do Júri...</div>
+          </div>
         </div>
         <div class="pcontrols" id="pcontrols" style="display:none">
           <button class="pcbtn" id="pc-pp">▶</button>
@@ -408,11 +450,32 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
           <div id="lnone" class="lnone" style="display:none">🎵 Letra não encontrada — improvisa!</div>
         </div>
         <div class="ctrl-row" id="singer-ctrl" style="display:none">
-          <button class="btn btn-grn btn-sm" id="finish-btn">✅ Terminei!</button>
-          <button class="btn btn-ghost btn-sm" id="skip-s">⏭ Saltar</button>
+          <button class="btn btn-grn btn-sm" id="finish-btn" onclick="finishSong()">✅ Terminei!</button>
+          <button class="btn btn-ghost btn-sm" id="skip-s" onclick="skipSong()">⏭ Saltar</button>
+          <div class="sync-ctrls">
+            <span style="font-size:0.65rem;color:var(--dim)">Sync Letra:</span>
+            <button class="sync-btn" onclick="adjustSync(-0.5)">-0.5s</button>
+            <span id="sync-display" style="font-size:0.75rem;color:var(--white);width:28px;text-align:center">0.0</span>
+            <button class="sync-btn" onclick="adjustSync(0.5)">+0.5s</button>
+          </div>
         </div>
         <div class="ctrl-row" id="host-ctrl" style="display:none">
-          <button class="btn btn-ghost btn-sm" id="skip-h">⏭ Saltar (host)</button>
+          <button class="btn btn-ghost btn-sm" id="skip-h" onclick="skipSong()">⏭ Saltar (host)</button>
+          <div class="sync-ctrls">
+            <span style="font-size:0.65rem;color:var(--dim)">Sync Letra:</span>
+            <button class="sync-btn" onclick="adjustSync(-0.5)">-0.5s</button>
+            <span id="sync-display-h" style="font-size:0.75rem;color:var(--white);width:28px;text-align:center">0.0</span>
+            <button class="sync-btn" onclick="adjustSync(0.5)">+0.5s</button>
+          </div>
+        </div>
+        
+        <!-- Live Reactions -->
+        <div class="react-row" id="react-row" style="display:none">
+          <button class="react-btn" onclick="sendReaction('👏')">👏</button>
+          <button class="react-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="react-btn" onclick="sendReaction('😂')">😂</button>
+          <button class="react-btn" onclick="sendReaction('🎤')">🎤</button>
+          <button class="react-btn" onclick="sendReaction('💙')">💙</button>
         </div>
       </div>
 
@@ -432,9 +495,14 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
             <input id="m-title" type="text" placeholder="Nome da música" autocomplete="off"/>
             <input id="m-artist" type="text" placeholder="Artista" autocomplete="off"/>
             <input id="m-yt" type="text" placeholder="Link YouTube (opcional)" autocomplete="off"/>
-            <button class="btn btn-ghost btn-sm" id="manual-btn">Adicionar</button>
+            <button class="btn btn-ghost btn-sm" id="manual-btn" onclick="addManual()">Adicionar</button>
           </div>
         </details>
+
+        <div class="ctitle" style="margin-top: 1.8rem;">Sugestões da Sala 💡</div>
+        <div id="sugg-list" class="results" style="max-height: 200px;">
+          <div class="qempty">Sem sugestões aprovadas</div>
+        </div>
       </div>
 
       <!-- CHAT -->
@@ -475,6 +543,12 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
   </div>
 </div>
 
+<div id="next-singer-overlay" class="next-singer-overlay">
+  <div class="ns-title">ÉS O PRÓXIMO! 🎤</div>
+  <div class="ns-sub">Prepara o gogó, estás quase a subir ao palco!</div>
+  <button class="btn btn-yel" onclick="this.parentElement.classList.remove('show')">ESTOU PRONTO!</button>
+</div>
+
 <div id="toast"></div>
 
 <!-- PeerJS must load before module -->
@@ -482,7 +556,7 @@ details.manual summary{cursor:pointer;color:var(--dim);font-size:.7rem;user-sele
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, off, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, onValue, off, remove, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 /* ─── FIREBASE ─────────────────────── */
 const app = initializeApp({
@@ -505,7 +579,7 @@ const S = {
   ldata:null, ltimer:null,
   ytReady:false, ytp:null, ytDur:0,
   pint:null, seeking:false, ignoreYT:false, lastPush:0,
-  specTimer:null
+  specTimer:null, nextAlerted:false
 };
 
 /* ─── UTILS ────────────────────────── */
@@ -594,7 +668,18 @@ function listenRoom() {
     renderQueue(qArr);
     const np  = d.nowPlaying || null;
     const key = np ? (np.title+'|'+np.ytId+'|'+np.singerId) : 'null';
-    if (key !== S.lastNpKey) { S.lastNpKey = key; S.nowPlaying = np; onNewSong(np); }
+    
+    // Check if I am the next singer
+    const nextSingerId = d.playback?.nextSingerId;
+    if (nextSingerId === S.myId && !S.nextAlerted && np?.singerId !== S.myId) {
+      S.nextAlerted = true;
+      document.getElementById('next-singer-overlay').classList.add('show');
+      try { if('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 500]); } catch(e){}
+    } else if (nextSingerId !== S.myId) {
+      S.nextAlerted = false;
+    }
+
+    if (key !== S.lastNpKey) { S.lastNpKey = key; S.nowPlaying = np; onNewSong(np); document.getElementById('next-singer-overlay').classList.remove('show'); }
     if (d.playback && !S.isCtrl) applyRemotePB(d.playback);
   });
   S.unsubs.push(() => off(r));
